@@ -1,0 +1,57 @@
+import random, json, os
+
+QUESTIONS = [
+    {"q": "What does CPU stand for?", "options": ["A) Central Processing Unit","B) Computer Personal Unit","C) Core Program Utility","D) Central Program Unit"], "ans": "A"},
+    {"q": "Python was named after?", "options": ["A) A snake","B) Monty Python comedy group","C) A Greek god","D) A game"], "ans": "B"},
+    {"q": "Output of print(2 ** 10)?", "options": ["A) 20","B) 210","C) 1024","D) 512"], "ans": "C"},
+    {"q": "LIFO structure is called?", "options": ["A) Queue","B) Stack","C) Array","D) Tree"], "ans": "B"},
+    {"q": "What does HTML stand for?", "options": ["A) HyperText Markup Language","B) High Transfer Markup Language","C) Hyper Transfer Method Logic","D) HyperText Method Language"], "ans": "A"},
+    {"q": "len([1,2,3]) returns?", "options": ["A) 2","B) 4","C) 3","D) Error"], "ans": "C"},
+    {"q": "Comment symbol in Python?", "options": ["A) //","B) /*","C) #","D) --"], "ans": "C"},
+]
+
+SCORES_FILE = "scores.json"
+
+def load_scores():
+    if os.path.exists(SCORES_FILE):
+        with open(SCORES_FILE) as f:
+            return json.load(f)
+    return []
+
+def save_score(name, score, total):
+    scores = load_scores()
+    scores.append({"name": name, "score": score, "total": total})
+    scores.sort(key=lambda x: x["score"], reverse=True)
+    with open(SCORES_FILE, "w") as f:
+        json.dump(scores[:5], f)
+
+def show_leaderboard():
+    scores = load_scores()
+    print("\n🏆 TOP SCORES")
+    for i, s in enumerate(scores, 1):
+        print(f"  {i}. {s['name']} — {s['score']}/{s['total']}")
+
+def play():
+    name = input("Your name: ").strip() or "Anonymous"
+    questions = random.sample(QUESTIONS, 5)
+    score = 0
+
+    for i, q in enumerate(questions, 1):
+        print(f"\nQ{i}: {q['q']}")
+        for o in q["options"]:
+            print(f"  {o}")
+        ans = input("Answer (A/B/C/D): ").strip().upper()
+        if ans == q["ans"]:
+            print("Correct! +1")
+            score += 1
+        else:
+            print(f"Wrong! Answer was {q['ans']}")
+
+    print(f"\n{name}: {score}/5 ({score*20}%)")
+    save_score(name, score, 5)
+    show_leaderboard()
+
+while True:
+    play()
+    if input("\nPlay again? (yes/no): ").lower() not in ("yes","y"):
+        break

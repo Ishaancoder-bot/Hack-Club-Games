@@ -1,0 +1,31 @@
+import random
+
+def play_game():
+    print("=" * 40)
+    print("  NUMBER GUESSING GAME")
+    print("=" * 40)
+    secret = random.randint(1, 100)
+    attempts = 0
+    max_attempts = 7
+    print(f"Guess a number between 1 and 100. You have {max_attempts} tries.\n")
+
+    while attempts < max_attempts:
+        try:
+            guess = int(input(f"Attempt {attempts+1}/{max_attempts}: "))
+        except ValueError:
+            print("Enter a valid number!")
+            continue
+        attempts += 1
+        if guess < secret:
+            print("Too low!\n")
+        elif guess > secret:
+            print("Too high!\n")
+        else:
+            print(f"Correct! You got it in {attempts} attempts!")
+            return
+    print(f"Out of attempts! The number was {secret}.")
+
+while True:
+    play_game()
+    if input("\nPlay again? (yes/no): ").lower() not in ("yes","y"):
+        break
