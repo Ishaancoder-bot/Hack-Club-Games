@@ -1,0 +1,289 @@
+import random, os, time
+
+def clear(): os.system('cls' if os.name=='nt' else 'clear')
+
+# ── CONSTANTS ──────────────────────────────────────────────
+W, H = 40, 20
+TILE_WALL  = '#'
+TILE_FLOOR = '.'
+TILE_DOOR  = '+'
+TILE_STAIRS= '>'
+TILE_CHEST = '$'
+
+# ── MAP GENERATION ─────────────────────────────────────────
+class Room:
+    def __init__(self, x, y, w, h):
+        self.x=x; self.y=y; self.w=w; self.h=h
+    def center(self):
+        return (self.x+self.w//2, self.y+self.h//2)
+    def overlaps(self, other):
+        return (self.x-1 <= other.x+other.w and self.x+self.w+1 >= other.x and
+                self.y-1 <= other.y+other.h and self.y+self.h+1 >= other.y)
+
+def make_map(level):
+    grid = [[TILE_WALL]*W for _ in range(H)]
+    rooms = []
+    num_rooms = random.randint(6, 10)
+
+    for _ in range(50):
+        rw = random.randint(4, 9)
+        rh = random.randint(3, 6)
+        rx = random.randint(1, W-rw-2)
+        ry = random.randint(1, H-rh-2)
+        room = Room(rx, ry, rw, rh)
+
+        if any(room.overlaps(r) for r in rooms):
+            continue
+
+        for y in range(room.y, room.y+room.h):
+            for x in range(room.x, room.x+room.w):
+                grid[y][x] = TILE_FLOOR
+        rooms.append(room)
+        if len(rooms) >= num_rooms: break
+
+    # Connect rooms with corridors
+    for i in range(1, len(rooms)):
+        x1,y1 = rooms[i-1].center()
+        x2,y2 = rooms[i].center()
+        if random.random() < 0.5:
+            for x in range(min(x1,x2), max(x1,x2)+1): grid[y1][x] = TILE_FLOOR
+            for y in range(min(y1,y2), max(y1,y2)+1): grid[y][x2] = TILE_FLOOR
+        else:
+            for y in range(min(y1,y2), max(y1,y2)+1): grid[y][x1] = TILE_FLOOR
+            for x in range(min(x1,x2), max(x1,x2)+1): grid[y2][x] = TILE_FLOOR
+
+    # Place stairs and chests
+    stair_room = random.choice(rooms[1:])
+    sx, sy = stair_room.center()
+    grid[sy][sx] = TILE_STAIRS
+
+    for room in random.sample(rooms, min(3, len(rooms))):
+        cx, cy = room.center()
+        if grid[cy][cx] == TILE_FLOOR:
+            grid[cy][cx] = TILE_CHEST
+
+    # Spawn enemies
+    enemies = []
+    enemy_types = [
+        ("Goblin",  15+level*3,  4+level,  1, "g"),
+        ("Skeleton",20+level*4,  6+level,  2, "s"),
+        ("Troll",   35+level*5, 10+level,  4, "T"),
+        ("Vampire", 28+level*4,  8+level,  3, "V"),
+    ]
+    for room in rooms[1:]:
+        if random.random() < 0.7:
+            t = random.choice(enemy_types)
+            ex = random.randint(room.x+1, room.x+room.w-2)
+            ey = random.randint(room.y+1, room.y+room.h-2)
+            enemies.append({"name":t[0],"hp":t[1],"max_hp":t[1],"atk":t[2],"dfn":t[3],"sym":t[4],"x":ex,"y":ey})
+
+    # Items on floor
+    items = []
+    item_types = [("Potion",15,"p"),("Sword",0,"s"),("Shield",0,"h")]
+    for room in random.sample(rooms, min(4,len(rooms))):
+        if random.random() < 0.5:
+            t = random.choice(item_types)
+            ix = random.randint(room.x+1, room.x+room.w-2)
+            iy = random.randint(room.y+1, room.y+room.h-2)
+            items.append({"name":t[0],"val":t[1],"sym":t[2],"x":ix,"y":iy})
+
+    player_start = rooms[0].center()
+    return grid, rooms, enemies, items, player_start
+
+# ── DISPLAY ────────────────────────────────────────────────
+def draw(grid, player, enemies, items, stats, messages, level, explored):
+    clear()
+    px, py = player["x"], player["y"]
+
+    # Build display
+    lines = []
+    for y in range(H):
+        row = ""
+        for x in range(W):
+            if (x,y) == (px,py):
+                row += "@"
+            elif any(e["x"]==x and e["y"]==y for e in enemies if e["hp"]>0):
+                e = next(e for e in enemies if e["x"]==x and e["y"]==y and e["hp"]>0)
+                row += e["sym"]
+            elif any(i["x"]==x and i["y"]==y for i in items):
+                i = next(i for i in items if i["x"]==x and i["y"]==y)
+                row += i["sym"]
+            elif (x,y) in explored:
+                row += grid[y][x]
+            else:
+                # Fog of war — only show near player
+                dist = abs(x-px)+abs(y-py)
+                if dist <= 5:
+                    explored.add((x,y))
+                    row += grid[y][x]
+                else:
+                    row += " "
+        lines.append(row)
+
+    p = stats
+    hp_bar = "█"*int(p["hp"]/p["max_hp"]*10) + "░"*(10-int(p["hp"]/p["max_hp"]*10))
+    print(f"  DUNGEON FLOOR {level}  |  {p['name']} Lv{p['level']}  |  HP:[{hp_bar}]{p['hp']}/{p['max_hp']}  ATK:{p['atk']} DEF:{p['dfn']}  Gold:{p['gold']}")
+    print("  " + "─"*W)
+    for line in lines:
+        print("  " + line)
+    print("  " + "─"*W)
+    print(f"  Controls: WASD=move  e=pickup  i=inventory  q=quit")
+    for msg in messages[-3:]:
+        print(f"  > {msg}")
+    print()
+
+# ── COMBAT ─────────────────────────────────────────────────
+def combat(player, enemy, messages):
+    messages.append(f"Fighting {enemy['name']}!")
+    while player["hp"] > 0 and enemy["hp"] > 0:
+        # Player attacks
+        pdmg = max(1, player["atk"] + random.randint(-2,3) - enemy["dfn"])
+        enemy["hp"] -= pdmg
+        messages.append(f"You hit {enemy['name']} for {pdmg}. ({enemy['hp']}/{enemy['max_hp']} HP)")
+
+        if enemy["hp"] <= 0:
+            xp = enemy["max_hp"]//3
+            gold = random.randint(3,12)
+            player["xp"] += xp
+            player["gold"] += gold
+            messages.append(f"{enemy['name']} defeated! +{xp}XP +{gold}gold")
+            # Level up
+            if player["xp"] >= player["xp_next"]:
+                player["level"] += 1
+                player["xp"] -= player["xp_next"]
+                player["xp_next"] = int(player["xp_next"]*1.4)
+                player["max_hp"] += 10; player["hp"] = min(player["hp"]+10,player["max_hp"])
+                player["atk"] += 2; player["dfn"] += 1
+                messages.append(f"LEVEL UP! Now level {player['level']}!")
+            return True
+
+        # Enemy attacks
+        edmg = max(1, enemy["atk"] + random.randint(-1,2) - player["dfn"])
+        player["hp"] -= edmg
+        messages.append(f"{enemy['name']} hits you for {edmg}. ({player['hp']}/{player['max_hp']} HP)")
+
+    return False
+
+# ── INVENTORY ──────────────────────────────────────────────
+def show_inventory(player):
+    clear()
+    print("\n  INVENTORY")
+    print("  " + "─"*30)
+    inv = player["inventory"]
+    if not inv:
+        print("  (empty)")
+    for i, item in enumerate(inv):
+        print(f"  [{i}] {item['name']} (val:{item['val']})")
+    print("\n  [u] Use item  [b] Back")
+    action = input("  > ").strip().lower()
+    if action == 'u':
+        try:
+            idx = int(input("  Item number: "))
+            item = inv[idx]
+            if item["name"] == "Potion":
+                healed = min(item["val"], player["max_hp"]-player["hp"])
+                player["hp"] += healed
+                inv.pop(idx)
+                print(f"  Used potion! Healed {healed} HP.")
+            elif item["name"] == "Sword":
+                player["atk"] += 5
+                inv.pop(idx)
+                print("  Equipped sword! ATK +5")
+            elif item["name"] == "Shield":
+                player["dfn"] += 3
+                inv.pop(idx)
+                print("  Equipped shield! DEF +3")
+            time.sleep(1)
+        except:
+            pass
+
+# ── MAIN GAME ──────────────────────────────────────────────
+def play():
+    print("="*45)
+    print("  ROGUELIKE DUNGEON EXPLORER")
+    print("="*45)
+    name = input("  Hero name: ").strip() or "Hero"
+
+    player = {
+        "name": name, "x":0, "y":0,
+        "hp":50, "max_hp":50, "atk":8, "dfn":2,
+        "level":1, "xp":0, "xp_next":20,
+        "gold":0, "inventory":[], "floor":1
+    }
+
+    floor = 1
+    grid, rooms, enemies, items, start = make_map(floor)
+    player["x"], player["y"] = start
+    messages = ["Welcome to the dungeon! Find the stairs (>) to go deeper."]
+    explored = set()
+
+    MOVES = {'w':(0,-1),'s':(0,1),'a':(-1,0),'d':(1,0)}
+
+    while player["hp"] > 0:
+        draw(grid, player, enemies, items, player, messages, floor, explored)
+        messages = []
+
+        cmd = input("  Action: ").strip().lower()
+
+        if cmd == 'q':
+            print("  You retreat from the dungeon.")
+            break
+
+        elif cmd == 'i':
+            show_inventory(player)
+
+        elif cmd == 'e':
+            # Pick up item
+            for item in items[:]:
+                if item["x"]==player["x"] and item["y"]==player["y"]:
+                    player["inventory"].append(item)
+                    items.remove(item)
+                    messages.append(f"Picked up {item['name']}!")
+                    break
+            else:
+                messages.append("Nothing to pick up here.")
+
+        elif cmd in MOVES:
+            dx, dy = MOVES[cmd]
+            nx, ny = player["x"]+dx, player["y"]+dy
+
+            if not (0<=nx<W and 0<=ny<H): continue
+            if grid[ny][nx] == TILE_WALL: continue
+
+            # Check for enemy
+            enemy = next((e for e in enemies if e["x"]==nx and e["y"]==ny and e["hp"]>0), None)
+            if enemy:
+                won = combat(player, enemy, messages)
+                if not won:
+                    break
+            else:
+                player["x"], player["y"] = nx, ny
+
+                # Check tile
+                tile = grid[ny][nx]
+                if tile == TILE_CHEST:
+                    gold = random.randint(10, 30)
+                    player["gold"] += gold
+                    grid[ny][nx] = TILE_FLOOR
+                    messages.append(f"Opened chest! +{gold} gold!")
+
+                elif tile == TILE_STAIRS:
+                    floor += 1
+                    player["floor"] = floor
+                    player["hp"] = min(player["hp"]+15, player["max_hp"])
+                    messages.append(f"Descended to floor {floor}! Healed 15 HP.")
+                    grid, rooms, enemies, items, start = make_map(floor)
+                    player["x"], player["y"] = start
+                    explored = set()
+
+    if player["hp"] <= 0:
+        clear()
+        print(f"\n  {player['name']} has died on floor {floor}.")
+        print(f"  Level:{player['level']}  Gold:{player['gold']}  Floor:{floor}")
+    else:
+        print(f"\n  Final stats — Level:{player['level']} Gold:{player['gold']} Floor:{floor}")
+
+    if input("\n  Play again? (yes/no): ").lower() in ("yes","y"):
+        play()
+
+play()
